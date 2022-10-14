@@ -15,7 +15,7 @@ int main() {
 			return -1;
 		}
 
-		printf("Cpu Utilization=%.2f(%)\n", (double) (ret) / 100.0);
+		printf("Cpu Utilization(%)= %.2f\n", (double) (ret) / 100.0);
 		sleep(1);
 	}
 
