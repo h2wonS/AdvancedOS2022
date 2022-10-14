@@ -343,7 +343,7 @@
 332	common	statx			sys_statx
 333	common	io_pgetevents		sys_io_pgetevents
 334	common	rseq			sys_rseq
-350	64	getcpuutil		__x64_sys_getcpuutil
+350	64	getcpuutil		sys_getcpuutil
 # don't use numbers 387 through 423, add new calls after the last
 # 'common' entry
 424	common	pidfd_send_signal	sys_pidfd_send_signal

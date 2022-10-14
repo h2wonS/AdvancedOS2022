@@ -445,7 +445,6 @@ static void ondemand_readahead(struct readahead_control *ractl,
 	unsigned long index = readahead_index(ractl);
 	pgoff_t prev_index;
 
-	printk("HEEEEEEEEWOOOOOOOON!!!!!!!!!!!!!!!!!!!!!!!\n");
 	/*
 	 * If the request exceeds the readahead window, allow the read to
 	 * be up to the optimal hardware IO size

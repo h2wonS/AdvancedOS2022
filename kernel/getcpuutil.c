@@ -1,7 +1,6 @@
 #include <linux/syscalls.h>
 #include <linux/kernel.h>
 
-#include "linux/getcpuutil.h"
 #include <linux/linkage.h>
 #include <linux/kernel_stat.h>
 
@@ -10,7 +9,6 @@
 #include <linux/fs.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
-#include <linux/kernel_stat.h>
 #include <linux/proc_fs.h>
 #include <linux/sched.h>
 #include <linux/sched/stat.h>
@@ -33,7 +31,7 @@
 
 #ifdef arch_idle_time
 
-u64 get_idle_time(struct kernel_cpustat *kcs, int cpu)
+u64 calc_idle_time(struct kernel_cpustat *kcs, int cpu)
 {
 	u64 idle;
 
@@ -43,7 +41,7 @@ u64 get_idle_time(struct kernel_cpustat *kcs, int cpu)
 	return idle;
 }
 
-static u64 get_iowait_time(struct kernel_cpustat *kcs, int cpu)
+static u64 calc_iowait_time(struct kernel_cpustat *kcs, int cpu)
 {
 	u64 iowait;
 
@@ -55,7 +53,7 @@ static u64 get_iowait_time(struct kernel_cpustat *kcs, int cpu)
 
 #else
 
-u64 get_idle_time(struct kernel_cpustat *kcs, int cpu)
+u64 calc_idle_time(struct kernel_cpustat *kcs, int cpu)
 {
 	u64 idle, idle_usecs = -1ULL;
 
@@ -71,7 +69,7 @@ u64 get_idle_time(struct kernel_cpustat *kcs, int cpu)
 	return idle;
 }
 
-static u64 get_iowait_time(struct kernel_cpustat *kcs, int cpu)
+static u64 calc_iowait_time(struct kernel_cpustat *kcs, int cpu)
 {
 	u64 iowait, iowait_usecs = -1ULL;
 
@@ -89,11 +87,13 @@ static u64 get_iowait_time(struct kernel_cpustat *kcs, int cpu)
 
 #endif
 
-static int calculate_cpu_util(struct seq_file *p, void *v)
+static int calc_cpu_util(void)
 {
 	int i, j;
-	u64 user, nice, system, idle, iowait, irq, softirq;
-	u64 total_idle_time, total_elapsed_time, total_cpu_util; 
+	u64 user, nice, system, idle, iowait, irq, softirq, steal;
+	u64 total_idle_time, total_elapsed_time;
+	int quotient, remainder;
+        int total_cpu_util; 
 	u64 sum = 0;
 	u64 sum_softirq = 0;
 	unsigned int per_softirq_sums[NR_SOFTIRQS] = {0};
@@ -101,7 +101,6 @@ static int calculate_cpu_util(struct seq_file *p, void *v)
 
 	user = nice = system = idle = iowait =
 		irq = softirq = steal = 0;
-	guest = guest_nice = 0;
 	getboottime64(&boottime);
 	/* shift boot timestamp according to the timens offset */
 	timens_sub_boottime(&boottime);
@@ -115,10 +114,11 @@ static int calculate_cpu_util(struct seq_file *p, void *v)
 		user		+= cpustat[CPUTIME_USER];
 		nice		+= cpustat[CPUTIME_NICE];
 		system		+= cpustat[CPUTIME_SYSTEM];
-		idle		+= get_idle_time(&kcpustat, i);
-		iowait		+= get_iowait_time(&kcpustat, i);
+		idle		+= calc_idle_time(&kcpustat, i);
+		iowait		+= calc_iowait_time(&kcpustat, i);
 		irq		+= cpustat[CPUTIME_IRQ];
 		softirq		+= cpustat[CPUTIME_SOFTIRQ];
+		steal		+= cpustat[CPUTIME_STEAL];
 
 		for (j = 0; j < NR_SOFTIRQS; j++) {
 			unsigned int softirq_stat = kstat_softirqs_cpu(j, i);
@@ -128,8 +128,8 @@ static int calculate_cpu_util(struct seq_file *p, void *v)
 		}
 	}
 	sum += arch_irq_stat();
-	total_elapsed_time = user + nice + system + idle + iowait + irq + softirq;
-	total_idle_time = idle + iowait;
+	total_elapsed_time = user + nice + system + idle + iowait + irq + softirq + steal;
+	total_idle_time = idle;
 
 	if (unlikely(!irq_fpu_usable())) {
 		total_cpu_util = -1; 
@@ -138,17 +138,20 @@ static int calculate_cpu_util(struct seq_file *p, void *v)
 	}
 	else {
 		kernel_fpu_begin();
-		total_cpu_util = 100 * (1 - total_idle_time / total_elapsed_time);
-		seq_put_decimal_ull(p, "cpu  ", nsec_to_clock_t(total_cpu_util));
-		seq_putc(p, '\n');
+		printk("Total Idle Time=%llu\n", total_idle_time);
+		printk("Total Elapsed Time=%llu\n", total_elapsed_time);
+		quotient = total_idle_time / total_elapsed_time;
+		remainder = (total_idle_time * 10000) / total_elapsed_time - quotient * 10000;
+		total_cpu_util = 10000 - (quotient + remainder) ;
+		printk("Total CPU Utilization=%d Q=%d, R=%d\n", total_cpu_util, quotient, remainder);
 		kernel_fpu_end();
+	return total_cpu_util;
 	}
-	return 0;
 }
 
 
 SYSCALL_DEFINE0(getcpuutil){
-	u64 cpu_util = calculate_cpu_util(p, v);
-	printk("Hello This is GetCPUUtil, Your Util %d(%)\n", cpu_util/100);
+	int cpu_util = calc_cpu_util();
+	printk("Hello This is GetCPUUtil, Your Util %d\n", cpu_util);
 	return cpu_util;
 }
